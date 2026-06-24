@@ -1,0 +1,34 @@
+[project]
+name = "chromabench"
+version = "0.1.0"
+description = "A benchmark for chromatic (label-aware) topological data analysis: labelled point clouds where colour-blind persistent homology provably cannot win."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Michael Bleher" }]
+keywords = [
+    "topological data analysis",
+    "persistent homology",
+    "chromatic",
+    "benchmark",
+    "point clouds",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-learn>=1.3",
+    "gudhi>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "matplotlib>=3.7"]
+
+[project.urls]
+Homepage = "https://github.com/subthaumic/chromabench"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chromabench"]

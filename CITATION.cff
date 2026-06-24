@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use chromabench, please cite it as below."
+title: "chromabench: a minimal validation for chromatic topological data analysis"
+abstract: >-
+  A family of two-colour point clouds for checking whether a
+  chromatic topological-data-analysis method can distinguish between both, shape and 
+  colour distributions.
+type: software
+authors:
+  - family-names: Bleher
+    given-names: Michael
+    orcid: "https://orcid.org/0000-0002-7796-1665"
+repository-code: "https://github.com/subthaumic/chromabench"
+url: "https://github.com/subthaumic/chromabench"
+license: MIT
+version: 0.1.0
+date-released: "2026-06-23"
+keywords:
+  - chromatic topological data analysis
+  - persistent homology
+  - dataset
+  - benchmark
