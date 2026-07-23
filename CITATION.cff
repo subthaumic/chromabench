@@ -1,10 +1,10 @@
 cff-version: 1.2.0
 message: "If you use chromabench, please cite it as below."
-title: "chromabench: a minimal validation for chromatic topological data analysis"
+title: chromabench
 abstract: >-
-  A family of two-colour point clouds for checking whether a
-  chromatic topological-data-analysis method can distinguish between both, shape and 
-  colour distributions.
+  A family of two-colour point clouds for checking whether a chromatic
+  topological-data-analysis method can distinguish between both, shape
+  and colour distributions.
 type: software
 authors:
   - family-names: Bleher

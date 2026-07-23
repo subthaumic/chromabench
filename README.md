@@ -139,14 +139,17 @@ The baseline is itself a `Method`: [`PHBaseline`](src/chromabench/baseline.py) i
 
 ## Citation
 
+This is exactly what GitHub's "Cite this repository" button emits from [`CITATION.cff`](CITATION.cff) -- keep the two in sync.
 
 ```bibtex
-@software{bleher_chromabench_2026,
-  author  = {Bleher, Michael},
-  title   = {chromabench: a minimal validation for chromatic topological data analysis},
-  year    = {2026},
-  version = {0.1.0},
-  url     = {https://github.com/subthaumic/chromabench}
+@software{Bleher_chromabench_2026,
+author = {Bleher, Michael},
+license = {MIT},
+month = jun,
+title = {{chromabench}},
+url = {https://github.com/subthaumic/chromabench},
+version = {0.1.0},
+year = {2026}
 }
 ```
 
