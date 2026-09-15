@@ -13,7 +13,7 @@ All three mingling patterns of each geometry realization reuse the same point se
 ## Install
 
 ```bash
-pip install chromabench
+pip install git+https://github.com/subthaumic/chromabench@dev/v0.2
 ```
 
 ## At a glance
