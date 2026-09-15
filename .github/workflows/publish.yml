@@ -1,0 +1,129 @@
+name: Publish
+
+# A published GitHub release runs the chain:
+#   build -> upload to TestPyPI -> install from TestPyPI and smoke-test -> upload to PyPI.
+# A manual run (Actions tab, or `gh workflow run publish.yml`) stops after the smoke test.
+# Both uploads authenticate with API tokens stored as repository secrets:
+# TEST_PYPI_API_TOKEN (test.pypi.org) and PYPI_API_TOKEN (pypi.org).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read package version
+        id: version
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Package version: ${version}"
+
+      - name: Check that the release tag matches the package version
+        if: github.event_name == 'release'
+        run: |
+          if [ "v${{ steps.version.outputs.version }}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Release tag ${GITHUB_REF_NAME} does not match pyproject version ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A re-run after a later job failed must not trip over the version already being there.
+          skip-existing: true
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+
+  smoke-test:
+    name: Install from TestPyPI and smoke-test
+    needs: [build, testpypi]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+
+    steps:
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install chromabench from TestPyPI, dependencies from PyPI
+        run: |
+          uv venv
+          # chromabench itself from TestPyPI (retry: a fresh upload can take a minute to appear) ...
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if uv pip install --no-cache --no-deps --index-url https://test.pypi.org/simple/ "chromabench==${VERSION}"; then
+              break
+            fi
+            if [ "$attempt" = 10 ]; then
+              echo "chromabench ${VERSION} did not become installable from TestPyPI"
+              exit 1
+            fi
+            echo "Not available yet, retrying in 30 s (attempt ${attempt})"
+            sleep 30
+          done
+          # ... and its declared dependencies from PyPI, never from TestPyPI.
+          .venv/bin/python -c "import importlib.metadata as m; print('\n'.join(m.requires('chromabench') or []))" > requirements.txt
+          uv pip install -r requirements.txt
+
+      - name: Smoke test
+        run: |
+          .venv/bin/python - <<'EOF'
+          import importlib.metadata
+          import os
+
+          import chromabench
+
+          installed = importlib.metadata.version("chromabench")
+          assert installed == os.environ["VERSION"], (installed, os.environ["VERSION"])
+          ds = chromabench.load_dataset()
+          assert len(ds.samples) == len(ds.y) > 0
+          print(f"chromabench {installed}: {len(ds.samples)} samples, {len(ds.class_names)} classes")
+          EOF
+
+  pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'release'
+    needs: [build, smoke-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}

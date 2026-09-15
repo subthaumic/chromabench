@@ -9,7 +9,7 @@ Because the mixed and separated versions of a layout reuse the *same* points, on
 ## Install
 
 ```bash
-pip install git+https://github.com/subthaumic/chromabench
+pip install chromabench
 ```
 
 ## At a glance
@@ -47,8 +47,8 @@ See the details below for more information.
 
 |             | mixed                                                | separated                                                |
 | ----------- | ---------------------------------------------------- | -------------------------------------------------------- |
-| **uniform** | <img src="assets/uniform_mixed.png" width="220">     | <img src="assets/uniform_separated.png" width="220">     |
-| **cluster** | <img src="assets/cluster_mixed.png" width="220">     | <img src="assets/cluster_separated.png" width="220">     |
+| **uniform** | <img src="https://raw.githubusercontent.com/subthaumic/chromabench/main/assets/uniform_mixed.png" width="220">     | <img src="https://raw.githubusercontent.com/subthaumic/chromabench/main/assets/uniform_separated.png" width="220">     |
+| **cluster** | <img src="https://raw.githubusercontent.com/subthaumic/chromabench/main/assets/cluster_mixed.png" width="220">     | <img src="https://raw.githubusercontent.com/subthaumic/chromabench/main/assets/cluster_separated.png" width="220">     |
 
 
 <details>
@@ -131,7 +131,7 @@ print(run_baseline(ds)["score"])             # ordinary PH (colour-blind)
 
 The baseline is itself a `Method`: [`PHBaseline`](src/chromabench/baseline.py) implements the same `fit`/`predict` interface a submission does -- `run_baseline` is just `evaluate(PHBaseline())` -- so it doubles as a complete, copyable example of how to wire one up.
 
-<p align="center"><img src="assets/ph_confusion.png" width="460"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/subthaumic/chromabench/main/assets/ph_confusion.png" width="460"></p>
 
 <p align="center"><sub>Confusion matrix of the colour-blind PH reference, aggregated over 10-fold cross-validation (rows normalised). PH never crosses spatial layouts, but splits <code>mixed</code> vs <code>separated</code> at roughly chance within each.</sub></p>
 
