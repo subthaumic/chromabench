@@ -1,0 +1,25 @@
+# Checks only, no linting or formatting: nothing here rewrites files.
+# Set up once per clone:  uv sync --extra dev && uv run pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: uv.lock matches pyproject.toml
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock)$
+      - id: pytest
+        name: pytest
+        entry: uv run --extra dev pytest -q
+        language: system
+        pass_filenames: false
+        files: ^(src|tests)/
