@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Added
+- `annulus` pattern on both axes. As a geometry: 200 points sampled uniformly by area on a ring around `(0.5, 0.5)` between radii 0.20 and 0.45, no background (parameters `annulus_inner_radius`, `annulus_outer_radius`). As a mingling pattern: a radial split of the colours, giving a colour band on `uniform` geometry, a core and a shell per cluster on `cluster` geometry, and nested rings on `annulus` geometry.
+- `Dataset.groups`: shared-geometry IDs. Each geometry realization is drawn once and all three mingling patterns colour that same point set.
+- `simulate()` returns the `geometry` and `mingling` of the sample alongside `coords` and `colours`.
+- A 3x3 overview figure (`assets/grid.png`), and tests for the annulus patterns and for the evaluation.
+
+### Changed
+- **Breaking:** the benchmark is a 3x3 grid, spatial geometry (`uniform`, `cluster`, `annulus`) crossed with mingling (`uniform`, `cluster`, `annulus`), with class names `<geometry>_<mingling>`. `load_dataset()` now returns 900 point clouds (9 classes, 100 samples each).
+- **Breaking:** the colouring axis is renamed to mingling: `mixed` is now `uniform` and `separated` is now `cluster`, so `uniform_mixed` becomes `uniform_uniform` and `cluster_separated` becomes `cluster_cluster`.
+- `evaluate()` and `PHBaseline` use stratified group 10-fold cross-validation, grouped by shared geometry, so a point set never appears in both a training and a test fold. Chance is 1/9; a colour-blind method cannot exceed 1/3.
+- `PHBaseline` orders coordinates canonically before computing persistent homology, so colour-dependent array order cannot affect the result.
+- Class figures use the nine new class names, and the baseline confusion matrix is 9x9.
 
 ## [0.1.0] - 2026-06-23
 

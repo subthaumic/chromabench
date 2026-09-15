@@ -3,15 +3,10 @@
 The simulation separates the unlabelled point geometry from the colour
 assignment:
 
-    geometry:   uniform | cluster
-    colouring:  mixed   | separated
+    geometry: uniform | cluster | annulus
+    mingling: uniform | cluster | annulus
 
-This gives four classes:
-
-    uniform_mixed
-    uniform_separated
-    cluster_mixed
-    cluster_separated
+The Cartesian product gives nine classes.
 
 The returned colour convention is 0 = colour A and 1 = colour B.
 """
@@ -32,9 +27,9 @@ DOMAIN_BOUNDARY = np.array(
     dtype=float,
 )
 
-GEOMETRIES = ("uniform", "cluster")
-COLOURINGS = ("mixed", "separated")
-CLASS_NAMES = tuple(f"{geometry}_{colouring}" for geometry in GEOMETRIES for colouring in COLOURINGS)
+GEOMETRIES = ("uniform", "cluster", "annulus")
+MINGLING_PATTERNS = ("uniform", "cluster", "annulus")
+CLASS_NAMES = tuple(f"{geometry}_{mingling}" for geometry in GEOMETRIES for mingling in MINGLING_PATTERNS)
 
 
 @dataclass(frozen=True)
@@ -49,6 +44,8 @@ class FactorialParams:
     hclust_method: str = "complete"
     hclust_min_cluster_size: int = 4
     hclust_max_cluster_size: int = 12
+    annulus_inner_radius: float = 0.20
+    annulus_outer_radius: float = 0.45
 
 
 def _balanced_counts(total: int, bins: int) -> np.ndarray:
@@ -116,6 +113,15 @@ def _generate_geometry(
     n_total = int(params.n_A + params.n_B)
     if geometry == "uniform":
         return rng.uniform(0.0, 1.0, size=(n_total, 2)), {"geometry": geometry}
+
+    if geometry == "annulus":
+        inner, outer = params.annulus_inner_radius, params.annulus_outer_radius
+        if not 0 < inner < outer <= 0.5:
+            raise ValueError("annulus radii must satisfy 0 < inner < outer <= 0.5")
+        theta = rng.uniform(0.0, 2.0 * np.pi, size=n_total)
+        radius = np.sqrt(rng.uniform(inner**2, outer**2, size=n_total))
+        coords = 0.5 + radius[:, None] * np.column_stack((np.cos(theta), np.sin(theta)))
+        return coords, {"geometry": geometry}
 
     if params.K % 2 != 0:
         raise ValueError("cluster geometry uses an even K so centres split evenly by colour")
@@ -253,7 +259,7 @@ def _hierarchical_point_order(
     return np.asarray(ordered, dtype=np.int64), ordered_clusters, z
 
 
-def _assign_uniform_hclust(
+def _assign_hierarchical_cluster_colours(
     coords: np.ndarray,
     params: FactorialParams,
 ) -> tuple[np.ndarray, dict[str, Any]]:
@@ -261,11 +267,11 @@ def _assign_uniform_hclust(
     order, ordered_clusters, z = _hierarchical_point_order(coords, params)
     colours[order[: params.n_A]] = COLOUR_A
     return colours, {
-        "colouring": "separated",
-        "colour_rule": "hierarchical_small_cluster_order",
+        "mingling": "cluster",
+        "mingling_rule": "hierarchical_small_cluster_order",
         "hclust_linkage": z,
         "hclust_order": order,
-        "hclust_blue_indices": order[: params.n_A],
+        "hclust_A_indices": order[: params.n_A],
         "hclust_ordered_cluster_sizes": np.array([len(c["members"]) for c in ordered_clusters]),
         "hclust_ordered_cluster_heights": np.array([c["height"] for c in ordered_clusters]),
     }
@@ -300,7 +306,7 @@ def _enforce_exact_counts(
     return colours
 
 
-def _assign_cluster_colours(
+def _assign_centre_colours(
     coords: np.ndarray,
     geometry_meta: dict[str, Any],
     params: FactorialParams,
@@ -310,11 +316,11 @@ def _assign_cluster_colours(
     if cluster_ids is None or cluster_colours is None:
         centres = geometry_meta.get("centres")
         if centres is None:
-            raise ValueError("cluster_separated requires cluster IDs or centres in geometry metadata")
+            raise ValueError("cluster_cluster requires cluster IDs or centres in geometry metadata")
         centres = np.asarray(centres, dtype=float)
         half = len(centres) // 2
         if len(centres) % 2 != 0:
-            raise ValueError("cluster_separated requires an even number of centres")
+            raise ValueError("cluster_cluster requires an even number of centres")
         cluster_colours = np.repeat([COLOUR_A, COLOUR_B], half).astype(np.int64)
         d2 = np.sum((coords[:, None, :] - centres[None, :, :]) ** 2, axis=2)
         cluster_ids = np.argmin(d2, axis=1)
@@ -324,37 +330,73 @@ def _assign_cluster_colours(
     colours = cluster_colours[cluster_ids]
     colours = _enforce_exact_counts(coords, colours, params)
     return colours, {
-        "colouring": "separated",
-        "colour_rule": "cluster_colour_split",
+        "mingling": "cluster",
+        "mingling_rule": "cluster_colour_split",
     }
+
+
+def _assign_annulus_colours(
+    coords: np.ndarray,
+    geometry: str,
+    geometry_meta: dict[str, Any],
+    params: FactorialParams,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Colour A surrounds colour B, locally for clusters and globally otherwise."""
+    colours = np.full(len(coords), COLOUR_B, dtype=np.int64)
+    if geometry == "cluster":
+        # Background points already have their nearest centre's cluster ID.
+        ids = geometry_meta["cluster_ids"]
+        centres = geometry_meta["centres"]
+        counts = np.bincount(ids, minlength=len(centres))
+        ideal = counts * params.n_A / len(coords)
+        shell_counts = np.floor(ideal).astype(np.int64)
+        remainder = int(params.n_A - shell_counts.sum())
+        priority = np.argsort(-(ideal - shell_counts), kind="stable")
+        shell_counts[priority[:remainder]] += 1
+        for cluster_id, shell_count in enumerate(shell_counts):
+            idx = np.flatnonzero(ids == cluster_id)
+            radii = np.linalg.norm(coords[idx] - centres[cluster_id], axis=1)
+            order = idx[np.argsort(radii, kind="stable")]
+            if shell_count:
+                colours[order[-shell_count:]] = COLOUR_A
+        rule = "cluster_core_shell"
+    else:
+        order = np.argsort(np.linalg.norm(coords - 0.5, axis=1), kind="stable")
+        # Uniform: B inside and outside an A band. Annulus: B inner / A outer.
+        start = params.n_B // 2 if geometry == "uniform" else params.n_B
+        colours[order[start : start + params.n_A]] = COLOUR_A
+        rule = "radial_band" if geometry == "uniform" else "nested_rings"
+    return colours, {"mingling": "annulus", "mingling_rule": rule}
 
 
 def _assign_colours(
     coords: np.ndarray,
-    colouring: str,
+    mingling: str,
     rng: np.random.Generator,
     params: FactorialParams,
     *,
     geometry: str,
     geometry_meta: dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    if colouring not in COLOURINGS:
-        raise ValueError(f"unknown colouring {colouring!r}; expected one of {COLOURINGS}")
+    if mingling not in MINGLING_PATTERNS:
+        raise ValueError(f"unknown mingling {mingling!r}; expected one of {MINGLING_PATTERNS}")
 
     n = len(coords)
     if params.n_A + params.n_B != n:
         raise ValueError("n_A + n_B must equal the number of uncoloured points")
 
     colours = np.full(n, COLOUR_B, dtype=np.int64)
-    if colouring == "mixed":
+    if mingling == "uniform":
         idx_A = rng.choice(n, size=params.n_A, replace=False)
         colours[idx_A] = COLOUR_A
-        return colours, {"colouring": colouring}
+        return colours, {"mingling": mingling}
 
-    if geometry == "uniform":
-        return _assign_uniform_hclust(coords, params)
+    if mingling == "annulus":
+        return _assign_annulus_colours(coords, geometry, geometry_meta or {}, params)
+    if geometry in ("uniform", "annulus"):
+        return _assign_hierarchical_cluster_colours(coords, params)
     if geometry == "cluster":
-        return _assign_cluster_colours(coords, geometry_meta or {}, params)
+        return _assign_centre_colours(coords, geometry_meta or {}, params)
     raise ValueError(f"unknown geometry {geometry!r}")
 
 
@@ -387,17 +429,29 @@ def simulate(class_name: str, rng: np.random.Generator, params: dict[str, Any] |
         raise ValueError(f"unknown class: {class_name!r}; expected one of {CLASS_NAMES}")
 
     p = _params_from_dict(params)
-    geometry, colouring = class_name.split("_", 1)
+    geometry, mingling = class_name.split("_", 1)
     coords, geometry_meta = _generate_geometry(geometry, rng, p)
-    colours, colour_meta = _assign_colours(
+    return _apply_mingling(coords, geometry, geometry_meta, mingling, rng, p)
+
+
+def _apply_mingling(
+    coords: np.ndarray,
+    geometry: str,
+    geometry_meta: dict[str, Any],
+    mingling: str,
+    rng: np.random.Generator,
+    p: FactorialParams,
+) -> dict:
+    """Apply a mingling pattern to a geometry without changing its points."""
+    colours, mingling_meta = _assign_colours(
         coords,
-        colouring,
+        mingling,
         rng,
         p,
         geometry=geometry,
         geometry_meta=geometry_meta,
     )
-    metadata = _reorder_pointwise_metadata({**geometry_meta, **colour_meta}, np.arange(len(coords)))
+    metadata = _reorder_pointwise_metadata({**geometry_meta, **mingling_meta}, np.arange(len(coords)))
     coords, colours, order = _stack_by_colour(coords, colours)
     metadata = _reorder_pointwise_metadata(metadata, order)
 
@@ -406,6 +460,6 @@ def simulate(class_name: str, rng: np.random.Generator, params: dict[str, Any] |
         "colours": colours,
         "domain_boundary": DOMAIN_BOUNDARY.copy(),
         "geometry": geometry,
-        "colouring": colouring,
+        "mingling": mingling,
         "metadata": metadata,
     }

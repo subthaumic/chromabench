@@ -10,9 +10,8 @@ This baseline deliberately throws colour away and works only from ``coords``:
 -> standardized, L2-regularized multinomial logistic regression (the regularization
 strength is chosen by inner cross-validation).
 
-Because the point positions are identical across the mixed/separated colour
-split, this baseline recovers the spatial layout but sits at chance on the
-colouring.
+Because the point sets are identical across the three mingling patterns, this
+baseline can recover spatial layout but cannot distinguish mingling.
 """
 
 from __future__ import annotations
@@ -23,11 +22,11 @@ import gudhi as gd
 import numpy as np
 from gudhi.representations import PersistenceImage
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from .dataset import Dataset
+from .dataset import Dataset, _canonical_coords, _geometry_groups
 from .evaluation import evaluate
 
 PH_DIMS = (0, 1)
@@ -48,7 +47,7 @@ def _finite(diagram: np.ndarray) -> np.ndarray:
 def _alpha_ph(coords: np.ndarray, dims: tuple[int, ...]) -> dict[int, np.ndarray]:
     """Persistent homology of the alpha complex on the points, as finite
     (birth, death) diagrams per dimension."""
-    st = gd.AlphaComplex(points=np.asarray(coords, dtype=float)).create_simplex_tree()
+    st = gd.AlphaComplex(points=_canonical_coords(coords)).create_simplex_tree()
     st.compute_persistence()
     out: dict[int, np.ndarray] = {}
     for d in dims:
@@ -83,7 +82,7 @@ def _pipeline() -> Pipeline:
     return Pipeline(
         [
             ("scaler", StandardScaler()),
-            ("clf", LogisticRegression(penalty="l2", solver="lbfgs", max_iter=MAX_ITER)),
+            ("clf", LogisticRegression(solver="lbfgs", max_iter=MAX_ITER)),
         ]
     )
 
@@ -108,11 +107,15 @@ class PHBaseline:
             _fit_vectorizer(per_dim, vec)
             self._vectorizers[d] = vec
             blocks.append(_transform_diagrams(per_dim, vec))
-        inner = StratifiedKFold(n_splits=INNER_CV_SPLITS, shuffle=True, random_state=self.random_state)
+        groups = _geometry_groups(samples)
+        n_splits = min(INNER_CV_SPLITS, min(len(np.unique(groups[y == label])) for label in np.unique(y)))
+        if n_splits < 2:
+            raise ValueError("PHBaseline requires at least two training geometry groups per class")
+        inner = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.random_state)
         self._clf = GridSearchCV(
             _pipeline(), {"clf__C": list(C_VALUES)}, cv=inner, scoring="balanced_accuracy", n_jobs=1,
         )
-        self._clf.fit(np.hstack(blocks), y)
+        self._clf.fit(np.hstack(blocks), y, groups=groups)
         return self
 
     def predict(self, samples: list[dict[str, np.ndarray]]) -> np.ndarray:

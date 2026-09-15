@@ -7,8 +7,8 @@ A method is any object with::
 
 where ``samples`` is a list of point clouds, each a dict with ``coords`` of
 shape ``(n, 2)`` and ``colours`` of shape ``(n,)``. A method that means to use
-colour must read *both* -- a colour-blind method cannot rise above the
-reference.
+colour must read *both* -- a colour-blind method cannot exceed 1/3 balanced
+accuracy on the nine-class benchmark.
 
 Pass your method to ``evaluate`` and compare against ``run_baseline``. For a
 complete, runnable example of this interface, read ``chromabench.PHBaseline``
