@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** the colouring axis is renamed to mingling: `mixed` is now `uniform` and `separated` is now `cluster`, so `uniform_mixed` becomes `uniform_uniform` and `cluster_separated` becomes `cluster_cluster`.
 - `evaluate()` and `PHBaseline` use stratified group 10-fold cross-validation, grouped by shared geometry, so a point set never appears in both a training and a test fold. Chance is 1/9; a colour-blind method cannot exceed 1/3.
 - `PHBaseline` orders coordinates canonically before computing persistent homology, so colour-dependent array order cannot affect the result.
+- `simulate()`, `load_dataset()` and `generate()` raise `ValueError` on unknown `params` keys instead of silently ignoring them.
+
+### Removed
+- `hclust_order`, `hclust_linkage` and `hclust_blue_indices` from the metadata of `simulate()`. They held point positions from before the points are sorted by colour, so they pointed at the wrong points.
 - Class figures use the nine new class names, and the baseline confusion matrix is 9x9.
 
 ## [0.1.0] - 2026-06-23

@@ -264,71 +264,22 @@ def _assign_hierarchical_cluster_colours(
     params: FactorialParams,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     colours = np.full(len(coords), COLOUR_B, dtype=np.int64)
-    order, ordered_clusters, z = _hierarchical_point_order(coords, params)
+    order, ordered_clusters, _ = _hierarchical_point_order(coords, params)
     colours[order[: params.n_A]] = COLOUR_A
     return colours, {
         "mingling": "cluster",
         "mingling_rule": "hierarchical_small_cluster_order",
-        "hclust_linkage": z,
-        "hclust_order": order,
-        "hclust_A_indices": order[: params.n_A],
         "hclust_ordered_cluster_sizes": np.array([len(c["members"]) for c in ordered_clusters]),
         "hclust_ordered_cluster_heights": np.array([c["height"] for c in ordered_clusters]),
     }
 
 
-def _enforce_exact_counts(
-    coords: np.ndarray,
-    colours: np.ndarray,
-    params: FactorialParams,
-) -> np.ndarray:
-    counts = np.bincount(colours, minlength=2)
-    if counts[COLOUR_A] == params.n_A and counts[COLOUR_B] == params.n_B:
-        return colours
+def _assign_centre_colours(geometry_meta: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
+    """Every point, background included, takes the colour of its cluster.
 
-    colours = colours.copy()
-    if counts[COLOUR_A] > params.n_A:
-        candidates = np.flatnonzero(colours == COLOUR_A)
-        remove_n = int(counts[COLOUR_A] - params.n_A)
-        centroid = coords[candidates].mean(axis=0)
-        remove = candidates[np.argsort(-np.linalg.norm(coords[candidates] - centroid, axis=1), kind="stable")[:remove_n]]
-        colours[remove] = COLOUR_B
-    elif counts[COLOUR_A] < params.n_A:
-        candidates = np.flatnonzero(colours == COLOUR_B)
-        add_n = int(params.n_A - counts[COLOUR_A])
-        if np.any(colours == COLOUR_A):
-            centroid = coords[colours == COLOUR_A].mean(axis=0)
-            add = candidates[np.argsort(np.linalg.norm(coords[candidates] - centroid, axis=1), kind="stable")[:add_n]]
-        else:
-            add = candidates[:add_n]
-        colours[add] = COLOUR_A
-
-    return colours
-
-
-def _assign_centre_colours(
-    coords: np.ndarray,
-    geometry_meta: dict[str, Any],
-    params: FactorialParams,
-) -> tuple[np.ndarray, dict[str, Any]]:
-    cluster_ids = geometry_meta.get("cluster_ids")
-    cluster_colours = geometry_meta.get("cluster_colours")
-    if cluster_ids is None or cluster_colours is None:
-        centres = geometry_meta.get("centres")
-        if centres is None:
-            raise ValueError("cluster_cluster requires cluster IDs or centres in geometry metadata")
-        centres = np.asarray(centres, dtype=float)
-        half = len(centres) // 2
-        if len(centres) % 2 != 0:
-            raise ValueError("cluster_cluster requires an even number of centres")
-        cluster_colours = np.repeat([COLOUR_A, COLOUR_B], half).astype(np.int64)
-        d2 = np.sum((coords[:, None, :] - centres[None, :, :]) ** 2, axis=2)
-        cluster_ids = np.argmin(d2, axis=1)
-
-    cluster_ids = np.asarray(cluster_ids, dtype=np.int64)
-    cluster_colours = np.asarray(cluster_colours, dtype=np.int64)
-    colours = cluster_colours[cluster_ids]
-    colours = _enforce_exact_counts(coords, colours, params)
+    The cluster geometry already sizes clusters so that this gives exactly
+    ``n_A`` and ``n_B`` points."""
+    colours = geometry_meta["cluster_colours"][geometry_meta["cluster_ids"]]
     return colours, {
         "mingling": "cluster",
         "mingling_rule": "cluster_colour_split",
@@ -396,7 +347,7 @@ def _assign_colours(
     if geometry in ("uniform", "annulus"):
         return _assign_hierarchical_cluster_colours(coords, params)
     if geometry == "cluster":
-        return _assign_centre_colours(coords, geometry_meta or {}, params)
+        return _assign_centre_colours(geometry_meta or {})
     raise ValueError(f"unknown geometry {geometry!r}")
 
 
@@ -405,22 +356,22 @@ def _stack_by_colour(coords: np.ndarray, colours: np.ndarray) -> tuple[np.ndarra
     return coords[order], colours[order], order
 
 
+# Metadata with one entry per point; it must follow the points when they are sorted by colour.
+_POINTWISE_METADATA = ("cluster_ids",)
+
+
 def _reorder_pointwise_metadata(metadata: dict[str, Any], order: np.ndarray) -> dict[str, Any]:
-    n = len(order)
-    out = {}
-    for key, value in metadata.items():
-        if isinstance(value, np.ndarray) and len(value) == n:
-            out[key] = value[order]
-        else:
-            out[key] = value
-    return out
+    return {key: value[order] if key in _POINTWISE_METADATA else value for key, value in metadata.items()}
 
 
 def _params_from_dict(params: dict[str, Any] | None) -> FactorialParams:
     if params is None:
         return FactorialParams()
     allowed = FactorialParams.__dataclass_fields__
-    return FactorialParams(**{key: value for key, value in params.items() if key in allowed})
+    unknown = sorted(set(params) - set(allowed))
+    if unknown:
+        raise ValueError(f"unknown params {unknown}; expected keys from {sorted(allowed)}")
+    return FactorialParams(**params)
 
 
 def simulate(class_name: str, rng: np.random.Generator, params: dict[str, Any] | None) -> dict:
@@ -451,9 +402,8 @@ def _apply_mingling(
         geometry=geometry,
         geometry_meta=geometry_meta,
     )
-    metadata = _reorder_pointwise_metadata({**geometry_meta, **mingling_meta}, np.arange(len(coords)))
     coords, colours, order = _stack_by_colour(coords, colours)
-    metadata = _reorder_pointwise_metadata(metadata, order)
+    metadata = _reorder_pointwise_metadata({**geometry_meta, **mingling_meta}, order)
 
     return {
         "coords": coords,
