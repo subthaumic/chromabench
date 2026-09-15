@@ -1,5 +1,9 @@
 # chromabench
 
+[![PyPI](https://img.shields.io/pypi/v/chromabench)](https://pypi.org/project/chromabench/)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/subthaumic/chromabench/actions/workflows/ci.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22772348.svg)](https://doi.org/10.5281/zenodo.22772348)
+
 A minimal validation for **chromatic topological data analysis**.
 
 If you have a method that is meant to see the shape **and** colour distribution of a point cloud at the same time, `chromabench` is the first, simplest check that it actually does.

@@ -14,6 +14,7 @@ repository-code: "https://github.com/subthaumic/chromabench"
 url: "https://github.com/subthaumic/chromabench"
 license: MIT
 version: 0.1.0
+doi: 10.5281/zenodo.22772348
 date-released: "2026-06-23"
 keywords:
   - chromatic topological data analysis
